@@ -18,13 +18,13 @@ ser = serial.Serial(
     timeout=1
 )
 
-# Création d'un DataFrame vide avec les colonnes appropriées
+# making empty dataframes to store all values
 df = pd.DataFrame(columns=['Timestamp', 'True East Velocity', 'True North Velocity', 'Up Velocity', 
                            'Position X', 'Position Y', 'Position Z'])
 
 def read_gps_data():
     last_timestamp = None
-    last_position = [0, 0, 0]  # Position initiale
+    last_position = [0, 0, 0]  # initial position
 
     while True:
         try:
@@ -54,7 +54,7 @@ def parse_pgrmv(data, timestamp, last_timestamp, last_position):
         true_north_velocity = float(parts[2])
         up_velocity = float(parts[3].split('*')[0])
 
-        # Calcul des déplacements en fonction des vitesses
+        # calculation of position in fonction of speed
         delta_t = 0
         if last_timestamp:
             delta_t = (datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S') - 
@@ -64,7 +64,7 @@ def parse_pgrmv(data, timestamp, last_timestamp, last_position):
         delta_y = true_north_velocity * delta_t
         delta_z = up_velocity * delta_t
 
-        # Calcul des nouvelles positions
+        # calculations of new positions
         new_position = [last_position[0] + delta_x,
                         last_position[1] + delta_y,
                         last_position[2] + delta_z]
@@ -78,12 +78,12 @@ def parse_pgrmv(data, timestamp, last_timestamp, last_position):
         print(f"Delta Z: {delta_z} m")
         print(f"New Position: {new_position}\n")
 
-        # Ajout des données au DataFrame
+        # adding new data to dataframe
         global df
         df.loc[len(df)] = [timestamp, true_east_velocity, true_north_velocity, up_velocity,
                            new_position[0], new_position[1], new_position[2]]
         
-        # Mettre à jour la dernière position
+        # update of last positions
         last_position = new_position
         
     except ValueError as e:
