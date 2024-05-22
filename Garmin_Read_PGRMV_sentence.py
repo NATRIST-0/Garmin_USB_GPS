@@ -6,8 +6,9 @@ Garmin_Read_PGRMV_sentence, after activation
 """
 
 import serial
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
+import matplotlib.pyplot as plt
 
 ser = serial.Serial(
     port='COM9', 
@@ -19,8 +20,11 @@ ser = serial.Serial(
 )
 
 # making empty dataframes to store all values
-df = pd.DataFrame(columns=['Timestamp', 'True East Velocity', 'True North Velocity', 'Up Velocity', 
-                           'Position X', 'Position Y', 'Position Z'])
+df = pd.DataFrame(columns=['Timestamp', 'time (s)','True East Velocity (m/s)', 'True North Velocity (m/s)', 'Up Velocity (m/s)', 
+                           'X (m)', 'Y (m)', 'Z (m)'])
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
 
 def read_gps_data():
     last_timestamp = None
@@ -32,8 +36,7 @@ def read_gps_data():
             if line:
                 if line.startswith('$PGRMV'):
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    parse_pgrmv(line, timestamp, last_timestamp, last_position)
-                    last_timestamp = timestamp
+                    last_timestamp, last_position = parse_pgrmv(line, timestamp, last_timestamp, last_position)
         except serial.SerialException as e:
             print(f"Serial error: {e}")
         except KeyboardInterrupt:
@@ -47,14 +50,14 @@ def parse_pgrmv(data, timestamp, last_timestamp, last_position):
     parts = data.split(',')
     if len(parts) < 4:
         print("Invalid PGRMV data")
-        return
+        return last_timestamp, last_position
 
     try:
         true_east_velocity = float(parts[1])
         true_north_velocity = float(parts[2])
         up_velocity = float(parts[3].split('*')[0])
 
-        # calculation of position in fonction of speed
+        # calculation of position in function of speed
         delta_t = 0
         if last_timestamp:
             delta_t = (datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S') - 
@@ -70,25 +73,35 @@ def parse_pgrmv(data, timestamp, last_timestamp, last_position):
                         last_position[2] + delta_z]
 
         print(f"Timestamp: {timestamp}")
+        print(f"\u0394 t {delta_t}")
         print(f"True East Velocity: {true_east_velocity} m/s")
         print(f"True North Velocity: {true_north_velocity} m/s")
         print(f"Up Velocity: {up_velocity} m/s")
-        print(f"Delta X: {delta_x} m")
-        print(f"Delta Y: {delta_y} m")
-        print(f"Delta Z: {delta_z} m")
+        print(f"\u0394 X: {delta_x} m")
+        print(f"\u0394 Y: {delta_y} m")
+        print(f"\u0394 Z: {delta_z} m")
         print(f"New Position: {new_position}\n")
 
         # adding new data to dataframe
         global df
-        df.loc[len(df)] = [timestamp, true_east_velocity, true_north_velocity, up_velocity,
+        df.loc[len(df)] = [timestamp, delta_t, true_east_velocity, true_north_velocity, up_velocity,
                            new_position[0], new_position[1], new_position[2]]
         
-        # update of last positions
-        last_position = new_position
+        # clear the axis and plot the new data
+        ax.clear()
+        ax.plot(df['X (m)'], df['Y (m)'], df['Z (m)'], color='DodgerBlue')
+        ax.set_xlabel('X (m)')
+        ax.set_ylabel('Y (m)')
+        ax.set_zlabel('Z (m)')
+        plt.title('Tracking Position of GPS')
+        plt.draw()
+        plt.pause(0.05)
+        
+        return timestamp, new_position
         
     except ValueError as e:
         print(f"Error parsing PGRMV data: {e}")
+        return last_timestamp, last_position
 
 if __name__ == "__main__":
     read_gps_data()
-
