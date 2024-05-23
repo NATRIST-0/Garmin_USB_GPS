@@ -2,9 +2,10 @@
 # author: Tristan Gayrard
 
 """
-Garmin_Read_PGRMV_sentence, after activation
+Garmin_Read_PGRMV_sentence_CSV
 """
 
+import csv
 import serial
 import pandas as pd
 from datetime import datetime
@@ -30,6 +31,13 @@ def read_gps_data():
     last_timestamp = None
     last_position = [0, 0, 0]  # initial position
 
+    # Open the CSV file once and write the header
+    with open('garmin_gps_data.csv', 'w', newline='') as csvfile:
+        fieldnames = ['Timestamp', 'time (s)', 'True East Velocity (m/s)', 'True North Velocity (m/s)', 
+                      'Up Velocity (m/s)', 'X (m)', 'Y (m)', 'Z (m)']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+    
     while True:
         try:
             line = ser.readline().decode('ascii', errors='replace').strip()
@@ -89,7 +97,7 @@ def parse_pgrmv(data, timestamp, last_timestamp, last_position):
         
         # clear the axis and plot the new data
         ax.clear()
-        ax.plot(df['X (m)'], df['Y (m)'], df['Z (m)'], color='DodgerBlue')
+        ax.plot(df['X (m)'], df['Y (m)'], df['Z (m)'], color='steelblue')
         ax.set_xlabel('X (m)')
         ax.set_ylabel('Y (m)')
         ax.set_zlabel('Z (m)')
@@ -97,6 +105,18 @@ def parse_pgrmv(data, timestamp, last_timestamp, last_position):
         plt.draw()
         plt.pause(0.05)
         
+        # Append new data to the CSV file
+        with open('garmin_gps_data_.csv', 'a', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=df.columns)
+            writer.writerow({'Timestamp': timestamp,
+                             'time (s)': delta_t,
+                             'True East Velocity (m/s)': true_east_velocity,
+                             'True North Velocity (m/s)': true_north_velocity,
+                             'Up Velocity (m/s)': up_velocity,
+                             'X (m)': new_position[0], 
+                             'Y (m)': new_position[1],
+                             'Z (m)': new_position[2]}) 
+    
         return timestamp, new_position
         
     except ValueError as e:
