@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue May 28 13:57:38 2024
+
+@author: GAYRARD
+"""
+
 import csv
 import serial
 import pynmea2
@@ -10,15 +17,18 @@ x_coords = []
 y_coords = []
 z_coords = []
 num_satellites = 0
+last_timestamp = None
+last_position = [0, 0, 0]  # initial position
+start_time = datetime.now()  # Initialize start time here
 
-def write_to_csv(csv_writer, data):
-    csv_writer.writerow(data)
+def write_to_csv(csv_writer, row_data):
+    csv_writer.writerow(row_data)
 
-def parse_pgrmv(data, timestamp1, last_timestamp, last_position, csv_writer):
+def parse_pgrmv(data, timestamp1, last_timestamp, last_position):
     parts = data.split(',')
     if len(parts) < 4:
         print("Invalid PGRMV data")
-        return last_timestamp, last_position
+        return last_timestamp, last_position, {}
 
     try:
         true_east_velocity = float(parts[1])
@@ -39,50 +49,45 @@ def parse_pgrmv(data, timestamp1, last_timestamp, last_position, csv_writer):
                         last_position[2] + delta_z]
 
         print(f"Timestamp1: {timestamp1}")
-        print(f"\u0394 t {delta_t}")
+        print(f"Δ t {delta_t}")
         print(f"True East Velocity: {true_east_velocity} m/s")
         print(f"True North Velocity: {true_north_velocity} m/s")
         print(f"Up Velocity: {up_velocity} m/s")
-        print(f"\u0394 X: {delta_x} m")
-        print(f"\u0394 Y: {delta_y} m")
-        print(f"\u0394 Z: {delta_z} m")
+        print(f"Δ X: {delta_x} m")
+        print(f"Δ Y: {delta_y} m")
+        print(f"Δ Z: {delta_z} m")
         print(f"New Position: {new_position}\n")
 
-        row_data = {
+        pgrmv_data = {
             'Timestamp1': timestamp1,
             'time (s)': delta_t,
             'True East Velocity (m/s)': true_east_velocity,
             'True North Velocity (m/s)': true_north_velocity,
             'Up Velocity (m/s)': up_velocity,
-            'X (m)': new_position[0], 
-            'Y (m)': new_position[1],
-            'Z (m)': new_position[2]
+            'X1 (m)': new_position[0], 
+            'Y1 (m)': new_position[1],
+            'Z1 (m)': new_position[2]
         }
 
-        # Write row to CSV file
-        write_to_csv(csv_writer, row_data)
-        
-        return timestamp1, new_position
-        
+        return timestamp1, new_position, pgrmv_data
+
     except ValueError as e:
         print(f"Error parsing PGRMV data: {e}")
-        return last_timestamp, last_position
-
+        return last_timestamp, last_position, {}
 
 def main():
-    global start_point
+    global start_point, last_timestamp, last_position, start_time
+
     ser = serial.Serial(port='COM9', baudrate=9600, parity=serial.PARITY_NONE,
                         stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS, timeout=1)
 
     with open('garmin_gps_data.csv', 'w', newline='') as csvfile:
         fieldnames = ['Timestamp1', 'time (s)', 'True East Velocity (m/s)', 'True North Velocity (m/s)', 'Up Velocity (m/s)', 
-                      'X (m)', 'Y (m)', 'Z (m)', 'Timestamp2', 'Latitude', 'Longitude', 'Altitude', 'Length (m)', 'Width (m)']
+                      'X1 (m)', 'Y1 (m)', 'Z1 (m)', 'Timestamp2', 'Latitude', 'Longitude', 'Altitude', 'X2 (m)', 'Y2 (m)', 'Z2 (m)']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
-        last_timestamp = None
-        last_position = [0, 0, 0]  # initial position
-        start_time = datetime.now()  # Initialize start time here
+        row_data = {}  # Initialize an empty dictionary to store the row data
 
         try:
             while True:
@@ -92,37 +97,53 @@ def main():
                     try:
                         msg = pynmea2.parse(data)
                         if isinstance(msg, pynmea2.GGA):
- 
-                            if start_point == None:  
+                            if start_point is None:  
                                 start_point = (msg.latitude, msg.longitude)
+                                start_alt = msg.altitude
+
                             x = geopy.distance.geodesic(start_point, (msg.latitude, start_point[1])).meters
                             y = geopy.distance.geodesic(start_point, (start_point[0], msg.longitude)).meters
+                            z = start_alt - msg.altitude
 
                             x_coords.append(x)
                             y_coords.append(y)
-                            z_coords.append(msg.altitude)
+                            z_coords.append(z)
 
                             elapsed_time = (datetime.now() - start_time).total_seconds() / 60.0
 
-                            write_to_csv(writer, {'Timestamp2': elapsed_time,
-                                             'Latitude': msg.latitude,
-                                             'Longitude': msg.longitude,
-                                             'Altitude': msg.altitude,
-                                             'Length (m)': x,
-                                             'Width (m)': y 
-                                              }) 
+                            row_data.update({
+                                'Timestamp2': elapsed_time,
+                                'Latitude': msg.latitude,
+                                'Longitude': msg.longitude,
+                                'Altitude': msg.altitude,
+                                'X2 (m)': x,
+                                'Y2 (m)': y,
+                                'Z2 (m)': z
+                            })
+                                               
                             print('elapsed_time', elapsed_time)
                             print('msg.latitude', msg.latitude)
                             print('msg.longitude', msg.longitude)
                             print('msg.altitude', msg.altitude)
                             print('x', x)
                             print('y', y)
+                            print('z', z)
                             print('\n')
-                            
+
+                            # If PGRMV data was also parsed, write the combined data to CSV
+                            if 'Timestamp1' in row_data:
+                                write_to_csv(writer, row_data)
+                                row_data = {}  # Clear row_data for the next set
 
                         elif data.startswith('$PGRMV'):
                             timestamp1 = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                            last_timestamp, last_position = parse_pgrmv(data, timestamp1, last_timestamp, last_position, writer)
+                            last_timestamp, last_position, pgrmv_data = parse_pgrmv(data, timestamp1, last_timestamp, last_position)
+                            row_data.update(pgrmv_data)
+
+                            # If GGA data was also parsed, write the combined data to CSV
+                            if 'Timestamp2' in row_data:
+                                write_to_csv(writer, row_data)
+                                row_data = {}  # Clear row_data for the next set
                         
                     except pynmea2.ParseError as e:
                         print("Error when analyzing the NMEA:", e)
