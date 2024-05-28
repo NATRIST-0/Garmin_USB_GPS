@@ -9,11 +9,13 @@ import csv
 import serial
 import pandas as pd
 from datetime import datetime
-import matplotlib.pyplot as plt
 
+csv_filename = str(input("Name of the csv file data will be stored in :"))
+port = input("USB port used: ")
+baudrate = int(input("Baud Rate = "))
 ser = serial.Serial(
-    port='COM9', 
-    baudrate=4800,        
+    port=port, 
+    baudrate=baudrate,        
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_ONE,
     bytesize=serial.EIGHTBITS,
@@ -23,9 +25,6 @@ ser = serial.Serial(
 # making empty dataframes to store all values
 df = pd.DataFrame(columns=['Timestamp', 'time (s)','True East Velocity (m/s)', 'True North Velocity (m/s)', 'Up Velocity (m/s)', 
                            'X (m)', 'Y (m)', 'Z (m)'])
-
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
 
 def read_gps_data():
     last_timestamp = None
@@ -94,16 +93,6 @@ def parse_pgrmv(data, timestamp, last_timestamp, last_position):
         global df
         df.loc[len(df)] = [timestamp, delta_t, true_east_velocity, true_north_velocity, up_velocity,
                            new_position[0], new_position[1], new_position[2]]
-        
-        # clear the axis and plot the new data
-        ax.clear()
-        ax.plot(df['X (m)'], df['Y (m)'], df['Z (m)'], color='steelblue')
-        ax.set_xlabel('X (m)')
-        ax.set_ylabel('Y (m)')
-        ax.set_zlabel('Z (m)')
-        plt.title('Tracking Position of GPS')
-        plt.draw()
-        plt.pause(0.05)
         
         # Append new data to the CSV file
         with open('garmin_gps_data_.csv', 'a', newline='') as csvfile:
